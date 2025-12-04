@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cronômetro Simples</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f2f5;
+            margin: 0;
+        }
+
+        .container {
+            text-align: center;
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        #time-display {
+            font-size: 4rem;
+            font-family: monospace; 
+            color: #333;
+            margin-bottom: 1.5rem;
+        }
+
+        button {
+            font-size: 1.2rem;
+            padding: 10px 20px;
+            margin: 0 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-weight: bold;
+            color: white;
+            min-width: 100px;
+        }
+
+        #startStopBtn {
+            background-color: #28a745;
+        }
+
+        #startStopBtn.running {
+            background-color: #dc3545; 
+        }
+
+        #resetBtn {
+            background-color: #6c757d; 
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="time-display">00:00:00</div>
+        
+        <div>
+            <button id="startStopBtn" onclick="toggleTimer()">START</button>
+            <button id="resetBtn" onclick="resetTimer()">RESET</button>
+        </div>
+    </div>
+
+    <script>
+        
+        let startTime = 0;
+        let elapsedTime = 0;
+        let timerInterval = null;
+        let isRunning = false;
+
+        
+        const display = document.getElementById('time-display');
+        const startStopBtn = document.getElementById('startStopBtn');
+
+        function toggleTimer() {
+            if (!isRunning) {
+                
+                startStopBtn.textContent = "STOP";
+                startStopBtn.classList.add("running"); 
+                
+                startTime = Date.now() - elapsedTime; 
+                
+                timerInterval = setInterval(updateTime, 10); 
+                isRunning = true;
+            } else {
+                // Lógica de STOP
+                startStopBtn.textContent = "START";
+                startStopBtn.classList.remove("running"); 
+                
+                clearInterval(timerInterval);
+                elapsedTime = Date.now() - startTime; 
+                isRunning = false;
+            }
+        }
+
+        function resetTimer() {
+            clearInterval(timerInterval);
+            startTime = 0;
+            elapsedTime = 0;
+            isRunning = false;
+            
+            
+            display.textContent = "00:00:00";
+            startStopBtn.textContent = "START";
+            startStopBtn.classList.remove("running");
+        }
+
+        function updateTime() {
+            const timePassed = Date.now() - startTime;
+
+            
+            let minutes = Math.floor((timePassed / (1000 * 60)) % 60);
+            let seconds = Math.floor((timePassed / 1000) % 60);
+            let milliseconds = Math.floor((timePassed % 1000) / 10); 
+           
+            minutes = String(minutes).padStart(2, "0");
+            seconds = String(seconds).padStart(2, "0");
+            milliseconds = String(milliseconds).padStart(2, "0");
+
+            display.textContent = `${minutes}:${seconds}:${milliseconds}`;
+        }
+    </script>
+</body>
+</html>
