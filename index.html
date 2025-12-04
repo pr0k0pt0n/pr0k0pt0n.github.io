@@ -3,64 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cronômetro Simples</title>
+    <title>Cronômetro Terminal</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Courier New', Courier, monospace;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background-color: #f0f2f5;
+            background-color: #000000;
             margin: 0;
+            color: #00ff00;
         }
 
         .container {
             text-align: center;
-            background: white;
+            background: #000000;
             padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 2px solid #00ff00;
+            border-radius: 5px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+            min-width: 300px;
         }
 
         #time-display {
             font-size: 4rem;
-            font-family: monospace; 
-            color: #333;
+            font-family: 'Courier New', Courier, monospace;
+            color: #00ff00;
             margin-bottom: 1.5rem;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.7);
+            font-weight: bold;
+            letter-spacing: 2px;
         }
 
         button {
             font-size: 1.2rem;
             padding: 10px 20px;
-            margin: 0 5px;
-            border: none;
-            border-radius: 5px;
+            margin: 0 10px;
+            background-color: #000000;
+            border: 2px solid #00ff00;
+            border-radius: 0;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
             font-weight: bold;
-            color: white;
-            min-width: 100px;
-        }
-
-        #startStopBtn {
-            background-color: #28a745;
-        }
-
-        #startStopBtn.running {
-            background-color: #dc3545; 
-        }
-
-        #resetBtn {
-            background-color: #6c757d; 
+            color: #00ff00;
+            min-width: 120px;
+            font-family: 'Courier New', Courier, monospace;
+            text-transform: uppercase;
         }
 
         button:hover {
-            opacity: 0.9;
+            background-color: #00ff00;
+            color: #000000;
+            box-shadow: 0 0 15px #00ff00;
         }
 
         button:active {
-            transform: scale(0.98);
+            transform: scale(0.95);
+        }
+
+        #startStopBtn.running {
+            border-color: #ff0000;
+            color: #ff0000;
+        }
+
+        #startStopBtn.running:hover {
+            background-color: #ff0000;
+            color: #000000;
+            box-shadow: 0 0 15px #ff0000;
+        }
+
+        #resetBtn {
+            border-color: #00ff00;
         }
     </style>
 </head>
@@ -76,33 +90,29 @@
     </div>
 
     <script>
-        
         let startTime = 0;
         let elapsedTime = 0;
         let timerInterval = null;
         let isRunning = false;
 
-        
         const display = document.getElementById('time-display');
         const startStopBtn = document.getElementById('startStopBtn');
 
         function toggleTimer() {
             if (!isRunning) {
-                
                 startStopBtn.textContent = "STOP";
-                startStopBtn.classList.add("running"); 
+                startStopBtn.classList.add("running");
                 
-                startTime = Date.now() - elapsedTime; 
+                startTime = Date.now() - elapsedTime;
                 
-                timerInterval = setInterval(updateTime, 10); 
+                timerInterval = setInterval(updateTime, 10);
                 isRunning = true;
             } else {
-                // Lógica de STOP
                 startStopBtn.textContent = "START";
-                startStopBtn.classList.remove("running"); 
+                startStopBtn.classList.remove("running");
                 
                 clearInterval(timerInterval);
-                elapsedTime = Date.now() - startTime; 
+                elapsedTime = Date.now() - startTime;
                 isRunning = false;
             }
         }
@@ -113,7 +123,6 @@
             elapsedTime = 0;
             isRunning = false;
             
-            
             display.textContent = "00:00:00";
             startStopBtn.textContent = "START";
             startStopBtn.classList.remove("running");
@@ -122,11 +131,10 @@
         function updateTime() {
             const timePassed = Date.now() - startTime;
 
-            
             let minutes = Math.floor((timePassed / (1000 * 60)) % 60);
             let seconds = Math.floor((timePassed / 1000) % 60);
-            let milliseconds = Math.floor((timePassed % 1000) / 10); 
-           
+            let milliseconds = Math.floor((timePassed % 1000) / 10);
+
             minutes = String(minutes).padStart(2, "0");
             seconds = String(seconds).padStart(2, "0");
             milliseconds = String(milliseconds).padStart(2, "0");
