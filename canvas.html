@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Mapa da Rede</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; background-color: #222; color: white; }
+        #network-canvas {
+            width: 100vw;
+            height: 100vh;
+            border: 1px solid #444;
+        }
+        .loading { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;}
+    </style>
+</head>
+<body>
+
+<div class="loading" id="status">Carregando mapa...</div>
+<div id="network-canvas"></div>
+
+<script type="text/javascript">
+    // Função principal que roda ao abrir a página
+    async function desenharRede() {
+        try {
+            // 1. Busca o arquivo JSON gerado pelo Python
+            const response = await fetch('dados_rede.json');
+            
+            // Verifica se o arquivo existe
+            if (!response.ok) {
+                throw new Error("Não foi possível ler 'dados_rede.json'. Verifique se o servidor Python está rodando.");
+            }
+
+            const dispositivos = await response.json();
+            document.getElementById('status').innerText = `Rede carregada: ${dispositivos.length} dispositivos encontrados.`;
+
+            // 2. Prepara os dados para o Vis.js
+            // Vamos criar um nó central para representar o "Roteador/Switch" e ligar todos nele
+            let nodes = [];
+            let edges = [];
+
+            // Nó central (simbólico)
+            nodes.push({ id: 0, label: "Rede Local", color: "#FF9900", size: 30, shape: "star" });
+
+            // Cria um nó para cada dispositivo encontrado
+            dispositivos.forEach((device, index) => {
+                // O ID precisa ser único, então usamos index + 1
+                let id = index + 1;
+                
+                // Define a cor: Verde se tiver nome, Azul se for desconhecido
+                let cor = device.nome !== "Desconhecido" ? "#97C2FC" : "#DDDDDD";
+                
+                // Texto que aparece embaixo da bolinha
+                let label = device.nome !== "Desconhecido" ? device.nome : device.ip;
+                
+                // Texto que aparece ao passar o mouse (tooltip)
+                let title = `IP: ${device.ip}<br>Status: ${device.status}`;
+
+                nodes.push({
+                    id: id,
+                    label: label,
+                    title: title,
+                    color: cor,
+                    shape: "dot"
+                });
+
+                // Cria a linha (aresta) ligando ao centro
+                edges.push({ from: 0, to: id });
+            });
+
+            // 3. Configuração do Canvas
+            const container = document.getElementById('network-canvas');
+            const data = {
+                nodes: new vis.DataSet(nodes),
+                edges: new vis.DataSet(edges)
+            };
+            
+            const options = {
+                nodes: {
+                    font: { color: "#ffffff" }, // Cor do texto
+                    size: 20
+                },
+                physics: {
+                    stabilization: false, // Deixa se mexer
+                    barnesHut: {
+                        gravitationalConstant: -8000, // Força de repulsão (quanto mais negativo, mais afastados)
+                        springConstant: 0.04 // Força da mola
+                    }
+                }
+            };
+
+            // Desenha!
+            new vis.Network(container, data, options);
+
+        } catch (erro) {
+            document.getElementById('status').innerText = "Erro: " + erro.message;
+            document.getElementById('status').style.color = "red";
+            console.error(erro);
+        }
+    }
+
+    // Inicia
+    desenharRede();
+</script>
+
+</body>
+</html>
