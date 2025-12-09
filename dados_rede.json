@@ -1,1 +1,149 @@
+import platform
+import subprocess
+import socket
+import threading
+import json
+import re
+from queue import Queue
 
+# --- CONFIGURAÇÕES ---
+numero_threads = 60
+# Portas estratégicas para ajudar a identificar o sistema
+portas_para_escanear = [21, 22, 53, 80, 135, 139, 443, 445, 3389, 5000, 8000, 8080, 62078]
+
+dispositivos_encontrados = []
+fila = Queue()
+print_lock = threading.Lock()
+
+def descobrir_rede_local():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        meu_ip = s.getsockname()[0]
+        s.close()
+        base = ".".join(meu_ip.split(".")[:3]) + "."
+        return base, meu_ip
+    except:
+        return "192.168.1.", "127.0.0.1"
+
+def adivinhar_os(ttl, portas):
+    """Tenta adivinhar o SO baseado no TTL do ping e portas abertas"""
+    if ttl is None:
+        return "Desconhecido"
+    
+    sistema = "Desconhecido"
+    
+    # Análise pelo TTL (Valores aproximados)
+    # Linux/Android/Mac usam 64. Windows usa 128. Roteadores Cisco/Outros usam 255.
+    if ttl <= 64:
+        sistema = "Linux/Android/iOS/Mac"
+    elif ttl <= 128:
+        sistema = "Windows"
+    elif ttl > 128:
+        sistema = "Roteador/Network"
+
+    # Refinamento pelas portas
+    if 62078 in portas: # Porta de sync iTunes Wi-Fi
+        sistema = "Apple Device (iOS/Mac)"
+    elif 445 in portas or 139 in portas:
+        sistema = "Windows (Provável)"
+    elif 22 in portas:
+        if sistema == "Windows": sistema = "Windows (com SSH)"
+        else: sistema = "Linux Server / Android Root"
+    
+    return sistema
+
+def scan_portas(ip):
+    abertas = []
+    for porta in portas_para_escanear:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.4) 
+        try:
+            if s.connect_ex((ip, porta)) == 0:
+                abertas.append(porta)
+        except:
+            pass
+        finally:
+            s.close()
+    return abertas
+
+def verificar_host(ip):
+    # Configura o comando ping
+    param = '-n' if platform.system().lower() == 'windows' else '-c'
+    timeout_flag = '-w' if platform.system().lower() == 'windows' else '-W'
+    timeout_val = '1000' if platform.system().lower() == 'windows' else '1'
+    
+    comando = ['ping', param, '1', timeout_flag, timeout_val, ip]
+
+    try:
+        # Pega a saída de texto do ping para ler o TTL
+        # No Windows precisamos decodificar cp850 ou utf-8 dependendo do terminal, 'ignore' evita erros.
+        saida = subprocess.check_output(comando, stderr=subprocess.DEVNULL).decode('cp850', errors='ignore')
+        
+        # Procura por "TTL=XXX" ou "ttl=XXX"
+        match_ttl = re.search(r'ttl[=<](\d+)', saida, re.IGNORECASE)
+        ttl_val = int(match_ttl.group(1)) if match_ttl else None
+
+        # Se chegou aqui, o ping respondeu
+        nome = "Desconhecido"
+        try:
+            nome = socket.gethostbyaddr(ip)[0]
+        except: pass
+
+        with print_lock:
+            print(f"[+] VIVO: {ip} (TTL={ttl_val}) -> Verificando portas...")
+
+        portas = scan_portas(ip)
+        
+        # Adivinha o sistema
+        provavel_os = adivinhar_os(ttl_val, portas)
+
+        resultado = {
+            "ip": ip,
+            "nome": nome,
+            "os_sugerido": provavel_os, # Campo novo
+            "ttl": ttl_val,
+            "status": "online",
+            "portas": portas
+        }
+
+        with print_lock:
+            print(f"    --> {ip} | Tipo: {provavel_os} | Portas: {portas}")
+
+        return resultado
+
+    except subprocess.CalledProcessError:
+        return None
+    except Exception as e:
+        return None
+
+def operario():
+    while True:
+        ip = fila.get()
+        res = verificar_host(ip)
+        if res:
+            dispositivos_encontrados.append(res)
+        fila.task_done()
+
+# --- MAIN ---
+if __name__ == "__main__":
+    base_ip, meu_ip = descobrir_rede_local()
+    print("="*60)
+    print(f"SCANNER SIMPLIFICADO (TTL CHECK) - IP: {meu_ip}")
+    print("="*60)
+    
+    for _ in range(numero_threads):
+        t = threading.Thread(target=operario)
+        t.daemon = True
+        t.start()
+
+    for i in range(1, 255):
+        fila.put(base_ip + str(i))
+
+    fila.join()
+
+    print("\nSalvando JSON...")
+    with open('dados_rede.json', 'w', encoding='utf-8') as f:
+        json.dump(dispositivos_encontrados, f, indent=4)
+        
+    print(f"Feito. {len(dispositivos_encontrados)} dispositivos.")
