@@ -2,106 +2,223 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Mapa da Rede</title>
+    <title>Mapa da Rede - Detecção de SO</title>
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; background-color: #222; color: white; }
+        /* Reset básico e tema escuro */
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; background-color: #1a1a1a; color: white; overflow: hidden; }
+        
         #network-canvas {
             width: 100vw;
             height: 100vh;
+            outline: none;
+        }
+
+        /* Painel Lateral Deslizante */
+        #info-panel {
+            position: absolute;
+            top: 0;
+            right: -350px; /* Começa escondido */
+            width: 300px;
+            height: 100%;
+            background-color: #252526;
+            border-left: 3px solid #3e3e42;
+            box-shadow: -5px 0 20px rgba(0,0,0,0.7);
+            transition: right 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            padding: 25px;
+            box-sizing: border-box;
+            z-index: 100;
+        }
+
+        #info-panel.active { right: 0; }
+
+        .btn-close {
+            background: none; border: none; color: #888; cursor: pointer; float: right; font-size: 1.2em; font-weight: bold;
+        }
+        .btn-close:hover { color: white; }
+
+        h2 { margin-top: 0; border-bottom: 1px solid #444; padding-bottom: 15px; color: #4db8ff; font-size: 1.5em; }
+        
+        .data-row { margin-bottom: 18px; }
+        .label { font-size: 0.85em; color: #aaa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+        .value { font-size: 1.1em; font-weight: 500; word-break: break-all; }
+
+        /* Estilo das etiquetas de portas */
+        .port-badge {
+            display: inline-block;
+            background-color: #2d8a4e; /* Verde floresta */
+            color: #e0e0e0;
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin: 2px;
+            font-size: 0.9em;
+            font-family: monospace;
             border: 1px solid #444;
         }
-        .loading { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 10px; border-radius: 5px;}
+        .no-ports { color: #666; font-style: italic; font-size: 0.9em; }
+
+        /* Legenda flutuante */
+        .legend {
+            position: absolute; bottom: 20px; left: 20px;
+            background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px;
+            pointer-events: none; user-select: none;
+        }
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; font-size: 0.85em; }
+        .dot { width: 10px; height: 10px; margin-right: 8px; display: inline-block; }
     </style>
 </head>
 <body>
 
-<div class="loading" id="status">Carregando mapa...</div>
 <div id="network-canvas"></div>
 
+<div class="legend">
+    <div style="margin-bottom:5px; font-weight:bold; color:#aaa">Legenda:</div>
+    <div class="legend-item"><span class="dot" style="background:#FF5555; border-radius:50%"></span>Portas Abertas (Alerta)</div>
+    <div class="legend-item"><span class="dot" style="background:#97C2FC; border-radius:50%"></span>Sem Portas Comuns</div>
+    <div style="margin-top:5px; border-top:1px solid #555; padding-top:5px;"></div>
+    <div class="legend-item">🟦 Windows</div>
+    <div class="legend-item">💎 Roteador / Rede</div>
+    <div class="legend-item">⚫ Linux / Android / iOS</div>
+</div>
+
+<div id="info-panel">
+    <button class="btn-close" onclick="fecharPainel()">✕</button>
+    <h2 id="panel-ip">Detalhes</h2>
+    
+    <div class="data-row">
+        <div class="label">Nome na Rede (Hostname)</div>
+        <div class="value" id="panel-nome">-</div>
+    </div>
+
+    <div class="data-row">
+        <div class="label">Sistema Sugerido (TTL)</div>
+        <div class="value" id="panel-os" style="color: #ffcc00;">-</div>
+    </div>
+    
+    <div class="data-row">
+        <div class="label">TTL (Valor Bruto)</div>
+        <div class="value" id="panel-ttl" style="font-family: monospace; color:#888;">-</div>
+    </div>
+
+    <div class="data-row">
+        <div class="label">Portas Abertas</div>
+        <div id="panel-portas" style="margin-top: 5px;"></div>
+    </div>
+</div>
+
 <script type="text/javascript">
-    // Função principal que roda ao abrir a página
-    async function desenharRede() {
+    let network;
+    let todosDispositivos = [];
+
+    async function carregarRede() {
         try {
-            // 1. Busca o arquivo JSON gerado pelo Python
-            const response = await fetch('dados_rede.json');
+            // Tenta ler o JSON com cache busting (para não pegar versão velha)
+            const response = await fetch('dados_rede.json?t=' + new Date().getTime());
             
-            // Verifica se o arquivo existe
-            if (!response.ok) {
-                throw new Error("Não foi possível ler 'dados_rede.json'. Verifique se o servidor Python está rodando.");
-            }
+            if (!response.ok) throw new Error("Arquivo não encontrado");
+            
+            todosDispositivos = await response.json();
 
-            const dispositivos = await response.json();
-            document.getElementById('status').innerText = `Rede carregada: ${dispositivos.length} dispositivos encontrados.`;
+            const nodes = [];
+            const edges = [];
 
-            // 2. Prepara os dados para o Vis.js
-            // Vamos criar um nó central para representar o "Roteador/Switch" e ligar todos nele
-            let nodes = [];
-            let edges = [];
+            // Nó Central (Gateway/Scanner)
+            nodes.push({ id: 0, label: "Meu PC/Scanner", color: "#FF9900", size: 35, shape: "star" });
 
-            // Nó central (simbólico)
-            nodes.push({ id: 0, label: "Rede Local", color: "#FF9900", size: 30, shape: "star" });
-
-            // Cria um nó para cada dispositivo encontrado
-            dispositivos.forEach((device, index) => {
-                // O ID precisa ser único, então usamos index + 1
+            todosDispositivos.forEach((device, index) => {
                 let id = index + 1;
                 
-                // Define a cor: Verde se tiver nome, Azul se for desconhecido
-                let cor = device.nome !== "Desconhecido" ? "#97C2FC" : "#DDDDDD";
-                
-                // Texto que aparece embaixo da bolinha
-                let label = device.nome !== "Desconhecido" ? device.nome : device.ip;
-                
-                // Texto que aparece ao passar o mouse (tooltip)
-                let title = `IP: ${device.ip}<br>Status: ${device.status}`;
+                // --- LÓGICA DE CORES (Baseada em Portas) ---
+                let temPortas = device.portas && device.portas.length > 0;
+                let corFundo = temPortas ? "#FF5555" : "#97C2FC"; // Vermelho ou Azul
+                if (device.nome === "Desconhecido" && !temPortas) corFundo = "#DDDDDD"; // Cinza se for fantasma
 
+                // --- LÓGICA DE FORMATOS (Baseada no OS Sugerido) ---
+                let formato = "dot"; // Padrão (Bolinha)
+                let os = device.os_sugerido || "";
+                
+                if (os.includes("Windows")) {
+                    formato = "box"; // Quadrado para Windows
+                } else if (os.includes("Roteador") || os.includes("Network")) {
+                    formato = "diamond"; // Losango para infraestrutura
+                }
+
+                // Cria o nó
                 nodes.push({
                     id: id,
-                    label: label,
-                    title: title,
-                    color: cor,
-                    shape: "dot"
+                    label: device.nome !== "Desconhecido" ? device.nome : device.ip,
+                    color: { background: corFundo, border: "#222" },
+                    shape: formato,
+                    size: 25,
+                    font: { color: "#ffffff", size: 14, strokeWidth: 2, strokeColor: "#000" }
                 });
 
-                // Cria a linha (aresta) ligando ao centro
-                edges.push({ from: 0, to: id });
+                // Cria a ligação
+                edges.push({ from: 0, to: id, color: "#555" });
             });
 
-            // 3. Configuração do Canvas
             const container = document.getElementById('network-canvas');
-            const data = {
-                nodes: new vis.DataSet(nodes),
-                edges: new vis.DataSet(edges)
-            };
+            const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
             
             const options = {
-                nodes: {
-                    font: { color: "#ffffff" }, // Cor do texto
-                    size: 20
-                },
                 physics: {
-                    stabilization: false, // Deixa se mexer
-                    barnesHut: {
-                        gravitationalConstant: -8000, // Força de repulsão (quanto mais negativo, mais afastados)
-                        springConstant: 0.04 // Força da mola
-                    }
-                }
+                    stabilization: false,
+                    barnesHut: { gravitationalConstant: -4000, springConstant: 0.04 }
+                },
+                interaction: { hover: true, tooltipDelay: 200 }
             };
 
-            // Desenha!
-            new vis.Network(container, data, options);
+            network = new vis.Network(container, data, options);
+
+            // Evento de Clique
+            network.on("click", function (params) {
+                if (params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    if (nodeId === 0) return; 
+
+                    const dadosDevice = todosDispositivos[nodeId - 1];
+                    mostrarDetalhes(dadosDevice);
+                } else {
+                    fecharPainel();
+                }
+            });
 
         } catch (erro) {
-            document.getElementById('status').innerText = "Erro: " + erro.message;
-            document.getElementById('status').style.color = "red";
             console.error(erro);
+            alert("Erro: Certifique-se que 'dados_rede.json' existe e o servidor Python está rodando.");
         }
     }
 
-    // Inicia
-    desenharRede();
+    function mostrarDetalhes(device) {
+        document.getElementById('panel-ip').innerText = device.ip;
+        document.getElementById('panel-nome').innerText = device.nome;
+        document.getElementById('panel-os').innerText = device.os_sugerido || "Desconhecido";
+        document.getElementById('panel-ttl').innerText = device.ttl ? device.ttl : "N/A";
+
+        const divPortas = document.getElementById('panel-portas');
+        divPortas.innerHTML = ""; 
+
+        if (device.portas && device.portas.length > 0) {
+            device.portas.forEach(p => {
+                let span = document.createElement("span");
+                span.className = "port-badge";
+                span.innerText = p;
+                divPortas.appendChild(span);
+            });
+        } else {
+            divPortas.innerHTML = "<span class='no-ports'>Nenhuma porta aberta detectada no scan rápido.</span>";
+        }
+
+        document.getElementById('info-panel').classList.add('active');
+    }
+
+    function fecharPainel() {
+        document.getElementById('info-panel').classList.remove('active');
+    }
+
+    // Inicia tudo
+    carregarRede();
 </script>
 
 </body>
